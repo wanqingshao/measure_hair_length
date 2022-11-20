@@ -11,6 +11,7 @@ import optparse
 import os
 import glob
 import re
+import pandas as pd
 
 class OptionParser(optparse.OptionParser):
     """
@@ -33,7 +34,7 @@ def load_and_process_image(image_name, folder_name):
     image_orig = cv.imread(folder_name + '/' +image_name)
     grey = cv.cvtColor(image_orig, cv.COLOR_BGR2GRAY)
     th2 = cv.adaptiveThreshold(grey,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,\
-            cv.THRESH_BINARY_INV,25,6)
+            cv.THRESH_BINARY_INV,21,4)
     skeleton1 =  (skeletonize(th2, method='lee')/255).astype(bool)
     skeleton1 = morphology.remove_small_objects(skeleton1, 20, connectivity=30)
     g = Skeleton(skeleton1)
@@ -49,7 +50,8 @@ def load_and_process_image(image_name, folder_name):
             )
             # remove the branch
             sk[integer_coords] = False
-    skclean = morphology.remove_small_objects(sk, min_size=2, connectivity=2)  
+    skclean =  morphology.remove_small_objects(skeleton1, 100, connectivity=30)  
+
     return image_orig, th2, skclean
 
 
@@ -153,10 +155,17 @@ def find_tip_direction(ai, to_resolve_df):
     ai_end = ai_df["node-id-dst"]
     to_resolve_start_to_ai_end = to_resolve_df[to_resolve_df["node-id-src"] == ai_end]
     to_resolve_end_to_ai_start = to_resolve_df[to_resolve_df["node-id-dst"] == ai_start]
+    to_resolve_start_to_ai_start = to_resolve_df[to_resolve_df["node-id-src"] == ai_start]
+    to_resolve_end_to_ai_end = to_resolve_df[to_resolve_df["node-id-dst"] == ai_end]
+    
     if(len(to_resolve_start_to_ai_end) >0):
         direction = "start_to_end"
-    else:
+    elif(len(to_resolve_end_to_ai_start) >0):
         direction = "end_to_start"
+    elif(len(to_resolve_start_to_ai_start) >1):
+        direction = "end_to_start"
+    else:
+        direction = "start_to_end"
     return direction
 
 def find_mid_direction(to_extend, last_end, to_resolve_df, to_resolve_starts, to_resolve_ends):
@@ -281,9 +290,34 @@ def select_best(path_list, new_stats, dedup = False):
     return selected_path_list
 
 
+def collect_length(resovled_path_list_uniq, new_stats, image_shape, min_length, include_edge):
+    path_to_plot = []
+    length_collection = []
+    for path in resovled_path_list_uniq:
+        ind_path_list = path[0]
+        ind_path_stats = new_stats.loc[ind_path_list]
+        total_length = sum(ind_path_stats["branch-distance"])
+        if total_length >= min_length:
+            if not include_edge:
+                min_start_0 = min(ind_path_stats["image-coord-src-0"])
+                max_start_0 = max(ind_path_stats["image-coord-src-0"])
+                min_start_1 = min(ind_path_stats["image-coord-src-1"])
+                max_start_1 = max(ind_path_stats["image-coord-src-1"])
+                min_end_0 = min(ind_path_stats["image-coord-dst-0"])
+                max_end_0 = max(ind_path_stats["image-coord-dst-0"])
+                min_end_1 = min(ind_path_stats["image-coord-dst-1"])
+                max_end_1 = max(ind_path_stats["image-coord-dst-1"])
+                coord_min = min(min_start_0, min_start_1, min_end_0, min_end_1)
+                coord_0_max = max(max_start_0, max_end_0)
+                coord_1_max = max(max_start_1, max_end_1)
+                if coord_min > 10 and coord_0_max < (image_shape[0] - 10) and coord_1_max < (image_shape[1] - 10):
+                    path_to_plot.append(ind_path_list)
+                    length_collection.append(total_length)
+    return path_to_plot, length_collection
+     
+    
 
-
-def output_path_plot(input_image_name, output_image_base, in_file_dir, out_file_dir, delta = 10, angle_cutoff = 80):
+def output_path_plot(input_image_name, output_image_base, in_file_dir, out_file_dir, min_length,include_edge, delta = 10, angle_cutoff = 80):
     image_orig, th2, skclean = load_and_process_image(input_image_name, in_file_dir)
     image_shape = image_orig.shape
     output_original_image(image_orig, th2, skclean, output_image_base, out_file_dir)
@@ -298,8 +332,9 @@ def output_path_plot(input_image_name, output_image_base, in_file_dir, out_file_
     resovled_path_list_best  = select_best(resovled_path_list, new_stats)
     resovled_path_list_uniq  = select_best(resovled_path_list_best, new_stats, dedup = True)
     resovled_path_list_uniq.extend([([x], 0) for x in singleton_path])
-    for i in range(len(resovled_path_list_uniq)):
-        path = resovled_path_list_uniq[i][0]
+    path_to_plot, length_collection = collect_length(resovled_path_list_uniq, new_stats, image_shape, min_length, include_edge)
+    for i in range(len(path_to_plot)):
+        path = path_to_plot[i]
         img1 = cv.cvtColor(th2, cv.COLOR_GRAY2RGB)
         for p in path:
             coord = new_g.path_coordinates(p)
@@ -310,7 +345,10 @@ def output_path_plot(input_image_name, output_image_base, in_file_dir, out_file_
                 except:
                     pass
         plt.imsave(out_file_dir +"/" + output_image_base + "_" + str(i) + ".png", img1)
-    return None
+    image_number = re.sub("[A-Z].*", "", output_image_base, flags=re.I)
+    image_type = re.sub(".*[0-9]", "", output_image_base)
+    length_dic = {"sample_id":image_number, "image_type":image_type, "hair_id":[i for i in range(len(length_collection))], "length":length_collection}
+    return length_dic
        
 
     
@@ -320,14 +358,23 @@ def main():
                           dest="in_file_dir",
                           type="string",
                           help="in_file_dir",
-                          default=None)
-    
+                          default=None)    
     opt_parser.add_option("--out_file_dir",
                           dest="out_file_dir",
                           type="string",
                           help="out_file_dir",
                           default=None)
-    
+    opt_parser.add_option("--min_length",
+                          dest="min_length",
+                          type="int",
+                          help="min_length",
+                          default=200)
+    opt_parser.add_option("--include_edge",
+                          dest="include_edge",
+                          action="store_true",
+                          help="include_edge",
+                          default=False)
+                
     (options, args) = opt_parser.parse_args()
 
     # validate the command line arguments
@@ -336,15 +383,23 @@ def main():
     
     in_file_dir = options.in_file_dir
     out_file_dir = options.out_file_dir
+    min_length = options.min_length
+    include_edge = options.include_edge
+    
+    os.makedirs(out_file_dir, exist_ok=True)
     
     all_images = glob.glob( in_file_dir + "/*tif")
+    all_lengths = []
     for image in all_images:
         image_name =  re.sub(".*\/", "", image)
         output_image_base = re.sub(".*\/|.tif", "", image)
         print("Processing " + image_name)
-        output_path_plot(image_name, output_image_base, in_file_dir, out_file_dir, delta = 10, angle_cutoff = 80)
+        length_dic = output_path_plot(image_name, output_image_base, in_file_dir, out_file_dir, min_length,include_edge,delta = 15, angle_cutoff = 80)
+        length_df = pd.DataFrame.from_dict(length_dic)
+        all_lengths.append(length_df)
+    all_length_df = pd.concat(all_lengths, ignore_index = True)
+    all_length_df.to_csv(out_file_dir + "/outut_length.csv", index = False)
         
-
 if __name__ == "__main__": main()
 
     
