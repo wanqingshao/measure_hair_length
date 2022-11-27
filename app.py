@@ -22,7 +22,7 @@ class MainWindow(QWidget):
         self.minlength_val = 200
         self.keep_edges = False
         self.iniUI()
-        
+
 
     def iniUI(self):
         outerLayout = QVBoxLayout()
@@ -39,17 +39,17 @@ class MainWindow(QWidget):
         self.button1.setFixedSize(150, 30)
         self.button2 = QPushButton(self)
         self.button2.setFixedSize(150, 30)
-        self.label1 = QLabel(self) 
-        self.label2 = QLabel(self) 
-        self.button1.setText("select input folder")
-        self.button1.clicked.connect(self.pick_input_folder)  # add (connect) button event 
-        self.button2.setText("select output folder")
+        self.label1 = QLabel(self)
+        self.label2 = QLabel(self)
+        self.button1.setText("Select input folder")
+        self.button1.clicked.connect(self.pick_input_folder)  # add (connect) button event
+        self.button2.setText("Select output folder")
         self.button2.clicked.connect(self.pick_output_folder)
         self.minlength = QLineEdit("200")
         self.minlength.setValidator(QIntValidator())
         #self.minlength.setAlignment(Qt.AlignLeft)
         self.minlength.textChanged.connect(self.collect_min_length)
-        self.edge = QCheckBox("Consider hair touch image edge")
+        self.edge = QCheckBox("Consider hair touching image edge")
         self.edge.toggled.connect(self.collect_edge_state)
         self.button3 = QPushButton(self)
         self.button3.setFixedSize(100, 50)
@@ -74,7 +74,7 @@ class MainWindow(QWidget):
         outerLayout.addStretch()
         self.setLayout(outerLayout)
 
-    
+
     def pick_input_folder(self):
         dialog = QFileDialog()
         folder_path = str(dialog.getExistingDirectory(self, "Open a folder",expanduser("~"), QFileDialog.ShowDirsOnly))
@@ -82,7 +82,7 @@ class MainWindow(QWidget):
         self.label1.setText(folder_path)
         self.label1.show()
         self.message("Input folder selected.")
-    
+
     def pick_output_folder(self):
         dialog = QFileDialog()
         folder_path = str(dialog.getExistingDirectory(self, "Open a folder",expanduser("~"), QFileDialog.ShowDirsOnly))
