@@ -1,11 +1,8 @@
 import cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
-from skimage import morphology, graph
-from skimage.morphology import skeletonize
-from skimage import morphology
-from skan import draw, Skeleton, summarize
-import skan
+from skimage.morphology import skeletonize, remove_small_objects
+from skan import Skeleton, summarize
 import sys
 import optparse
 import os
@@ -36,10 +33,10 @@ def load_and_process_image(image_name, folder_name):
     th2 = cv.adaptiveThreshold(grey,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,\
             cv.THRESH_BINARY_INV,21,4)
     skeleton1 =  (skeletonize(th2, method='lee')/255).astype(bool)
-    skeleton1 = morphology.remove_small_objects(skeleton1, 20, connectivity=30)
+    skeleton1 = remove_small_objects(skeleton1, 20, connectivity=30)
     g = Skeleton(skeleton1)
     sk = skeleton1.copy()
-    stats = skan.summarize(g)
+    stats = summarize(g)
     thres_min_size = 5
     for ii in range(stats.shape[0]):
         if (stats.loc[ii, 'branch-distance'] < thres_min_size
@@ -50,7 +47,7 @@ def load_and_process_image(image_name, folder_name):
             )
             # remove the branch
             sk[integer_coords] = False
-    skclean =  morphology.remove_small_objects(skeleton1, 100, connectivity=30)  
+    skclean =  remove_small_objects(skeleton1, 100, connectivity=30)
 
     return image_orig, th2, skclean
 
